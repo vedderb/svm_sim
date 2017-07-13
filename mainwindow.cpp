@@ -188,6 +188,9 @@ MainWindow::MainWindow(QWidget *parent) :
 
     ui->plot->setInteractions(QCP::iRangeDrag | QCP::iRangeZoom);
     ui->plot->axisRect()->setRangeZoom(Qt::Horizontal);
+
+    ui->plotPhase->setInteractions(QCP::iRangeDrag | QCP::iRangeZoom);
+    ui->plotPhase->axisRect()->setRangeZoom(Qt::Horizontal | Qt::Vertical);
 }
 
 MainWindow::~MainWindow()
@@ -213,13 +216,18 @@ void MainWindow::on_runButton_clicked()
     double phase = 0.0;
     double time = 0.0;
 
-    QList<double> timeList;
-    QList<double> iBusList;
+    QVector<double> timeList;
+    QVector<double> iBusList;
+
+    QVector<double> timeListPhase;
+    QVector<double> lia, lib, lic;
 
     double id = 0.0;
     double iq = current;
     double mod_d = mod * tan(phase_lag);
     double mod_q = mod;
+
+    double i_max = 0.0;
 
     for (double i = 0;i < cycles;i += 1.0) {
         double s = sin(phase);
@@ -241,6 +249,15 @@ void MainWindow::on_runButton_clicked()
         double ia = i_alpha;
         double ib = -0.5 * i_alpha + (sqrt(3.0) / 2.0) * i_beta;
         double ic = -0.5 * i_alpha - (sqrt(3.0) / 2.0) * i_beta;
+
+        lia.append(ia);
+        lib.append(ib);
+        lic.append(ic);
+        timeListPhase.append(time);
+
+        if (fabs(ic) > fabs(i_max)) {
+            i_max = ic;
+        }
 
         // Do SVM
         uint32_t duty1, duty2, duty3, svmSector;
@@ -279,6 +296,11 @@ void MainWindow::on_runButton_clicked()
             ib = -0.5 * i_alpha + (sqrt(3.0) / 2.0) * i_beta;
             ic = -0.5 * i_alpha - (sqrt(3.0) / 2.0) * i_beta;
 
+            lia.append(ia);
+            lib.append(ib);
+            lic.append(ic);
+            timeListPhase.append(time);
+
             // Do SVM
             uint32_t duty1, duty2, duty3, svmSector;
             svm(-mod_alpha * (sqrt(3.0) / 2.0), -mod_beta * (sqrt(3.0) / 2.0), timTop, &duty1, &duty2, &duty3, &svmSector);
@@ -299,6 +321,8 @@ void MainWindow::on_runButton_clicked()
             iBusList.append(samp);
         }
     }
+
+    qDebug() << i_max;
 
     // Reduce data and apply switching times
     mTimeVec.clear();
@@ -339,6 +363,25 @@ void MainWindow::on_runButton_clicked()
     ui->plot->yAxis->setLabel("A");
     ui->plot->legend->setVisible(true);
     ui->plot->replot();
+
+    ui->plotPhase->clearGraphs();
+    ui->plotPhase->addGraph();
+    ui->plotPhase->graph()->setPen(QPen(Qt::black));
+    ui->plotPhase->graph()->setData(timeListPhase, lia);
+    ui->plotPhase->graph()->setName(tr("Phase A"));
+    ui->plotPhase->addGraph();
+    ui->plotPhase->graph()->setPen(QPen(Qt::blue));
+    ui->plotPhase->graph()->setData(timeListPhase, lib);
+    ui->plotPhase->graph()->setName(tr("Phase B"));
+    ui->plotPhase->addGraph();
+    ui->plotPhase->graph()->setPen(QPen(Qt::red));
+    ui->plotPhase->graph()->setData(timeListPhase, lic);
+    ui->plotPhase->graph()->setName(tr("Phase C"));
+    ui->plotPhase->rescaleAxes();
+    ui->plotPhase->xAxis->setLabel("Seconds");
+    ui->plotPhase->yAxis->setLabel("A");
+    ui->plotPhase->legend->setVisible(true);
+    ui->plotPhase->replot();
 
     ui->currentLabel->setText(QString("Current RMS: %1 A").arg(curr_avg));
 }
