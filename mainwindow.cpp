@@ -22,7 +22,15 @@
 #include <QDir>
 
 namespace {
-static void svm(float alpha, float beta, uint32_t PWMHalfPeriod,
+void truncNum(double &num, double top) {
+    if (num > top) {
+        num = top;
+    } else if (num < -top) {
+        num = -top;
+    }
+}
+
+void svm(float alpha, float beta, uint32_t PWMHalfPeriod,
                 uint32_t* tAout, uint32_t* tBout, uint32_t* tCout, uint32_t *svm_sector) {
     uint32_t sector;
     int halfPeriod = PWMHalfPeriod;
@@ -208,6 +216,10 @@ void MainWindow::on_runButton_clicked()
     double tSw = ui->tSwBox->value() * 1e-6;
     double phase_lag = ui->phaseLagBox->value() * (M_PI / 180.0);
     bool sampleV0V7 = ui->sampleV0V7Box->isChecked();
+    double maxCurrent = ui->currentMaxBox->value();
+    bool twoShunts = ui->twoShuntBox->isChecked();
+    bool highCurrentMode = ui->highCurrentBox->isChecked();
+    bool hcVoltageCompare = ui->hcVoltageCompareBox->isChecked();
     uint32_t timTop = 10000;
 
     double cycles = fsw * revs / (speed / 60.0);
@@ -220,7 +232,7 @@ void MainWindow::on_runButton_clicked()
     QVector<double> iBusList;
 
     QVector<double> timeListPhase;
-    QVector<double> lia, lib, lic;
+    QVector<double> lia, lib, lic, litot;
 
     double id = 0.0;
     double iq = current;
@@ -250,11 +262,6 @@ void MainWindow::on_runButton_clicked()
         double ib = -0.5 * i_alpha + (sqrt(3.0) / 2.0) * i_beta;
         double ic = -0.5 * i_alpha - (sqrt(3.0) / 2.0) * i_beta;
 
-        lia.append(ia);
-        lib.append(ib);
-        lic.append(ic);
-        timeListPhase.append(time);
-
         if (fabs(ic) > fabs(i_max)) {
             i_max = ic;
         }
@@ -262,6 +269,68 @@ void MainWindow::on_runButton_clicked()
         // Do SVM
         uint32_t duty1, duty2, duty3, svmSector;
         svm(-mod_alpha * (sqrt(3.0) / 2.0), -mod_beta * (sqrt(3.0) / 2.0), timTop, &duty1, &duty2, &duty3, &svmSector);
+
+        // Update current plot
+        double tia = ia;
+        double tib = ib;
+        double tic = ic;
+
+        truncNum(tia, maxCurrent);
+        truncNum(tib, maxCurrent);
+        truncNum(tic, maxCurrent);
+
+        // Calculate measured current with sampling after truncation
+        if (twoShunts) {
+            tic = -(tia + tib);
+        } else {
+            if (highCurrentMode) {
+                double cmp1, cmp2, cmp3;
+
+                if (!hcVoltageCompare) {
+                    cmp1 = tia;
+                    cmp2 = tib;
+                    cmp3 = tic;
+                } else {
+                    cmp1 = (double)duty1;
+                    cmp2 = (double)duty2;
+                    cmp3 = (double)duty3;
+                    double avg = (cmp1 + cmp2 + cmp3) / 3.0;
+                    cmp1 -= avg;
+                    cmp2 -= avg;
+                    cmp3 -= avg;
+                }
+
+                if (fabs(cmp1) > fabs(cmp2) && fabs(cmp1) > fabs(cmp3)) {
+                    tia = -(tib + tic);
+                } else if (fabs(cmp2) > fabs(cmp1) && fabs(cmp2) > fabs(cmp3)) {
+                    tib = -(tia + tic);
+                } else if (fabs(cmp3) > fabs(cmp1) && fabs(cmp3) > fabs(cmp2)) {
+                    tic = -(tia + tib);
+                }
+            } else {
+                if (duty1 > duty2 && duty1 > duty3) {
+                    tia = -(tib + tic);
+                } else if (duty2 > duty1 && duty2 > duty3) {
+                    tib = -(tia + tic);
+                } else if (duty3 > duty1 && duty3 > duty2) {
+                    tic = -(tia + tib);
+                }
+            }
+        }
+
+        // Clarke transform assuming balanced currents
+        double tialpha = tia;
+        double tibeta = (1.0 / sqrt(3.0)) * tia + (2.0 / sqrt(3.0)) * tib;
+
+        // Park transform
+        double tid = tialpha * c + tibeta * s;
+        double tiq = tibeta * c - tialpha * s;
+
+        litot.append(sqrt(tid * tid + tiq * tiq));
+        lia.append(tia);
+        lib.append(tib);
+        lic.append(tic);
+        timeListPhase.append(time);
 
         // Simulate center-aligned PWM
         for (unsigned int j = 0;j < timTop;j++) {
@@ -296,14 +365,71 @@ void MainWindow::on_runButton_clicked()
             ib = -0.5 * i_alpha + (sqrt(3.0) / 2.0) * i_beta;
             ic = -0.5 * i_alpha - (sqrt(3.0) / 2.0) * i_beta;
 
-            lia.append(ia);
-            lib.append(ib);
-            lic.append(ic);
-            timeListPhase.append(time);
-
             // Do SVM
             uint32_t duty1, duty2, duty3, svmSector;
             svm(-mod_alpha * (sqrt(3.0) / 2.0), -mod_beta * (sqrt(3.0) / 2.0), timTop, &duty1, &duty2, &duty3, &svmSector);
+
+            // Update current plot
+            double tia = ia;
+            double tib = ib;
+            double tic = ic;
+
+            truncNum(tia, maxCurrent);
+            truncNum(tib, maxCurrent);
+            truncNum(tic, maxCurrent);
+
+            // Calculate measured current with sampling after truncation
+            if (twoShunts) {
+                tic = -(tia + tib);
+            } else {
+                if (highCurrentMode) {
+                    double cmp1, cmp2, cmp3;
+
+                    if (!hcVoltageCompare) {
+                        cmp1 = tia;
+                        cmp2 = tib;
+                        cmp3 = tic;
+                    } else {
+                        cmp1 = (double)duty1;
+                        cmp2 = (double)duty2;
+                        cmp3 = (double)duty3;
+                        double avg = (cmp1 + cmp2 + cmp3) / 3.0;
+                        cmp1 -= avg;
+                        cmp2 -= avg;
+                        cmp3 -= avg;
+                    }
+
+                    if (fabs(cmp1) > fabs(cmp2) && fabs(cmp1) > fabs(cmp3)) {
+                        tia = -(tib + tic);
+                    } else if (fabs(cmp2) > fabs(cmp1) && fabs(cmp2) > fabs(cmp3)) {
+                        tib = -(tia + tic);
+                    } else if (fabs(cmp3) > fabs(cmp1) && fabs(cmp3) > fabs(cmp2)) {
+                        tic = -(tia + tib);
+                    }
+                } else {
+                    if (duty1 < duty2 && duty1 < duty3) {
+                        tia = -(tib + tic);
+                    } else if (duty2 < duty1 && duty2 < duty3) {
+                        tib = -(tia + tic);
+                    } else if (duty3 < duty1 && duty3 < duty2) {
+                        tic = -(tia + tib);
+                    }
+                }
+            }
+
+            // Clarke transform assuming balanced currents
+            double tialpha = tia;
+            double tibeta = (1.0 / sqrt(3.0)) * tia + (2.0 / sqrt(3.0)) * tib;
+
+            // Park transform
+            double tid = tialpha * c + tibeta * s;
+            double tiq = tibeta * c - tialpha * s;
+
+            lia.append(tia);
+            lib.append(tib);
+            lic.append(tic);
+            timeListPhase.append(time);
+            litot.append(sqrt(tid * tid + tiq * tiq));
         }
 
         for (unsigned int j = timTop - 1;j > 0;j--) {
@@ -377,6 +503,10 @@ void MainWindow::on_runButton_clicked()
     ui->plotPhase->graph()->setPen(QPen(Qt::red));
     ui->plotPhase->graph()->setData(timeListPhase, lic);
     ui->plotPhase->graph()->setName(tr("Phase C"));
+    ui->plotPhase->addGraph();
+    ui->plotPhase->graph()->setPen(QPen(Qt::darkGreen));
+    ui->plotPhase->graph()->setData(timeListPhase, litot);
+    ui->plotPhase->graph()->setName(tr("Total measured"));
     ui->plotPhase->rescaleAxes();
     ui->plotPhase->xAxis->setLabel("Seconds");
     ui->plotPhase->yAxis->setLabel("A");

@@ -153,6 +153,43 @@
        </spacer>
       </item>
       <item>
+       <widget class="QDoubleSpinBox" name="currentMaxBox">
+        <property name="prefix">
+         <string>Max Current: </string>
+        </property>
+        <property name="suffix">
+         <string> A</string>
+        </property>
+        <property name="maximum">
+         <double>999.000000000000000</double>
+        </property>
+        <property name="value">
+         <double>160.000000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QCheckBox" name="twoShuntBox">
+        <property name="text">
+         <string>Two Shunts</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QCheckBox" name="highCurrentBox">
+        <property name="text">
+         <string>High Current Mode</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QCheckBox" name="hcVoltageCompareBox">
+        <property name="text">
+         <string>HC Voltage Compare</string>
+        </property>
+       </widget>
+      </item>
+      <item>
        <widget class="QPushButton" name="runButton">
         <property name="text">
          <string>Run</string>
