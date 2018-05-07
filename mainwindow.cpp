@@ -199,6 +199,9 @@ MainWindow::MainWindow(QWidget *parent) :
 
     ui->plotPhase->setInteractions(QCP::iRangeDrag | QCP::iRangeZoom);
     ui->plotPhase->axisRect()->setRangeZoom(Qt::Horizontal | Qt::Vertical);
+
+    ui->plotSvpwm->setInteractions(QCP::iRangeDrag | QCP::iRangeZoom);
+    ui->plotSvpwm->axisRect()->setRangeZoom(Qt::Horizontal | Qt::Vertical);
 }
 
 MainWindow::~MainWindow()
@@ -209,7 +212,7 @@ MainWindow::~MainWindow()
 void MainWindow::on_runButton_clicked()
 {
     double mod = ui->modBox->value();
-    double current = ui->currentBox->value() / sqrt(3.0);
+    double current = ui->currentBox->value();// / sqrt(3.0);
     double fsw = ui->fSwBox->value() * 1e3;
     double speed = ui->speedBox->value();
     double revs = ui->revBox->value();
@@ -233,6 +236,7 @@ void MainWindow::on_runButton_clicked()
 
     QVector<double> timeListPhase;
     QVector<double> lia, lib, lic, litot;
+    QVector<double> dutyA, dutyB, dutyC, dutyAvg;
 
     double id = 0.0;
     double iq = current;
@@ -269,6 +273,10 @@ void MainWindow::on_runButton_clicked()
         // Do SVM
         uint32_t duty1, duty2, duty3, svmSector;
         svm(-mod_alpha * (sqrt(3.0) / 2.0), -mod_beta * (sqrt(3.0) / 2.0), timTop, &duty1, &duty2, &duty3, &svmSector);
+        dutyA.append(duty1);
+        dutyB.append(duty2);
+        dutyC.append(duty3);
+        dutyAvg.append((duty1 + duty2 + duty3) / 3);
 
         // Update current plot
         double tia = ia;
@@ -368,6 +376,10 @@ void MainWindow::on_runButton_clicked()
             // Do SVM
             uint32_t duty1, duty2, duty3, svmSector;
             svm(-mod_alpha * (sqrt(3.0) / 2.0), -mod_beta * (sqrt(3.0) / 2.0), timTop, &duty1, &duty2, &duty3, &svmSector);
+            dutyA.append(duty1);
+            dutyB.append(duty2);
+            dutyC.append(duty3);
+            dutyAvg.append((duty1 + duty2 + duty3) / 3);
 
             // Update current plot
             double tia = ia;
@@ -448,8 +460,6 @@ void MainWindow::on_runButton_clicked()
         }
     }
 
-    qDebug() << i_max;
-
     // Reduce data and apply switching times
     mTimeVec.clear();
     mIBusVec.clear();
@@ -512,6 +522,29 @@ void MainWindow::on_runButton_clicked()
     ui->plotPhase->yAxis->setLabel("A");
     ui->plotPhase->legend->setVisible(true);
     ui->plotPhase->replot();
+
+    ui->plotSvpwm->clearGraphs();
+    ui->plotSvpwm->addGraph();
+    ui->plotSvpwm->graph()->setPen(QPen(Qt::black));
+    ui->plotSvpwm->graph()->setData(timeListPhase, dutyA);
+    ui->plotSvpwm->graph()->setName(tr("Phase A"));
+    ui->plotSvpwm->addGraph();
+    ui->plotSvpwm->graph()->setPen(QPen(Qt::blue));
+    ui->plotSvpwm->graph()->setData(timeListPhase, dutyB);
+    ui->plotSvpwm->graph()->setName(tr("Phase B"));
+    ui->plotSvpwm->addGraph();
+    ui->plotSvpwm->graph()->setPen(QPen(Qt::red));
+    ui->plotSvpwm->graph()->setData(timeListPhase, dutyC);
+    ui->plotSvpwm->graph()->setName(tr("Phase C"));
+    ui->plotSvpwm->addGraph();
+    ui->plotSvpwm->graph()->setPen(QPen(Qt::darkGreen));
+    ui->plotSvpwm->graph()->setData(timeListPhase, dutyAvg);
+    ui->plotSvpwm->graph()->setName(tr("Neutral"));
+    ui->plotSvpwm->rescaleAxes();
+    ui->plotSvpwm->xAxis->setLabel("Seconds");
+    ui->plotSvpwm->yAxis->setLabel("Cnt");
+    ui->plotSvpwm->legend->setVisible(true);
+    ui->plotSvpwm->replot();
 
     ui->currentLabel->setText(QString("Current RMS: %1 A").arg(curr_avg));
 }
